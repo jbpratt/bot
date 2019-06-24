@@ -122,6 +122,7 @@ func (b *bot) connect() error {
 	return nil
 }
 
+// TODO: handle cloudflare dc
 func (b *bot) listen() {
 	for {
 		_, message, err := b.conn.ReadMessage()
@@ -129,7 +130,10 @@ func (b *bot) listen() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		m := parseMessage(message)
+		m, err := parseMessage(message)
+		if err != nil {
+			panic(err)
+		}
 
 		if m.Contents != nil {
 			if m.Type == "PRIVMSG" {
@@ -210,27 +214,26 @@ func (b *bot) send(contents *contents) error {
 		case t == "discover":
 		case t == "trending":
 		default:
-			response = "`ERROR: incorrect option`"
+			response = "`ERROR`"
 		}
 	}
 
 	defer fmt.Println("message sent")
-	return b.conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`PRIVMSG {"nick": "%s", "data": "%s"}`, contents.Nick, response)))
+	return b.conn.WriteMessage(
+		websocket.TextMessage, []byte(
+			fmt.Sprintf(`PRIVMSG {"nick": "%s", "data": "%s"}`, contents.Nick, response)))
 }
 
-func parseMessage(msg []byte) *message {
-
+func parseMessage(msg []byte) (*message, error) {
 	received := string(msg)
-
 	m := new(message)
-
-	msgType := received[:strings.IndexByte(received, ' ')]
-
-	m.Type = msgType
-
+	maxBound := strings.IndexByte(received, ' ')
+	if maxBound < 0 {
+		return nil, errors.New("couldn't parse message type.")
+	}
+	m.Type = received[:maxBound]
 	m.Contents = parseContents(received, len(m.Type))
-
-	return m
+	return m, nil
 }
 
 func parseContents(received string, length int) *contents {
